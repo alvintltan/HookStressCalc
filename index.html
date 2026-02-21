@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hook Strength Calculator — Winkler-Bach Formula</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1a1d23; --surface: #23272e; --border: #353a44;
+    --text: #e0e0e0; --text-dim: #8a8f98; --accent: #5b9bd5;
+    --tension: #5599dd; --compression: #e05555; --neutral: #44bb77;
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header span { color: var(--text-dim); font-size: 13px; }
+  .app {
+    display: grid; grid-template-columns: 320px 1fr;
+    height: calc(100vh - 49px); overflow: hidden;
+  }
+  /* --- Left Panel: Controls --- */
+  .controls {
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 16px; overflow-y: auto;
+  }
+  .controls h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-dim); margin: 16px 0 8px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .controls h2:first-child { margin-top: 0; }
+  .slider-group { margin-bottom: 10px; }
+  .slider-group label {
+    display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 2px;
+  }
+  .slider-group label .val { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slider-group input[type=range] {
+    width: 100%; height: 6px; -webkit-appearance: none; appearance: none;
+    background: var(--border); border-radius: 3px; outline: none; cursor: pointer;
+  }
+  .slider-group input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg); cursor: pointer;
+  }
+  select {
+    width: 100%; padding: 6px 8px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 4px; font-size: 13px; cursor: pointer;
+  }
+  .hidden { display: none !important; }
+  /* Results */
+  .results {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; margin-top: 16px;
+  }
+  .results h2 { margin: 0 0 8px; border: none; }
+  .result-row {
+    display: flex; justify-content: space-between; font-size: 13px;
+    padding: 3px 0; border-bottom: 1px solid var(--border);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-row .label { color: var(--text-dim); }
+  .result-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .result-row .value.tension { color: var(--tension); }
+  .result-row .value.compression { color: var(--compression); }
+  /* --- Right Panel: Visualizations --- */
+  .visuals {
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 12px; padding: 12px; overflow: hidden;
+  }
+  .vis-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    overflow: hidden; position: relative; display: flex; flex-direction: column;
+  }
+  .vis-panel .title {
+    font-size: 12px; color: var(--text-dim); padding: 8px 12px;
+    border-bottom: 1px solid var(--border); text-transform: uppercase;
+    letter-spacing: 0.6px; flex-shrink: 0;
+  }
+  .vis-panel .content { flex: 1; position: relative; min-height: 0; }
+  .vis-panel canvas, .vis-panel svg { display: block; width: 100%; height: 100%; }
+  .stress-plot { grid-column: 1 / -1; }
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; padding: 4px 12px 6px; font-size: 11px;
+    color: var(--text-dim); flex-shrink: 0;
+  }
+  .legend span::before {
+    content: ''; display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 4px; vertical-align: middle;
+  }
+  .legend .l-tension::before { background: var(--tension); }
+  .legend .l-compression::before { background: var(--compression); }
+  .legend .l-neutral::before { background: var(--neutral); }
+  .legend .l-centroid::before { background: #cccc44; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hook Strength Calculator</h1>
+  <span>Winkler-Bach Curved Beam Theory</span>
+</header>
+
+<div class="app">
+  <!-- Controls -->
+  <div class="controls">
+    <h2>Loading</h2>
+    <div class="slider-group">
+      <label>Force F <span class="val" id="vF">10 N</span></label>
+      <input type="range" id="sF" min="1" max="100" value="10" step="1">
+    </div>
+
+    <h2>Hook Geometry</h2>
+    <div class="slider-group">
+      <label>Inner radius r<sub>i</sub> <span class="val" id="vRi">3.0 mm</span></label>
+      <input type="range" id="sRi" min="1" max="49.5" value="3" step="0.5">
+    </div>
+    <div class="slider-group">
+      <label>Outer radius r<sub>o</sub> <span class="val" id="vRo">8.0 mm</span></label>
+      <input type="range" id="sRo" min="1.5" max="50" value="8" step="0.5">
+    </div>
+
+    <h2>Cross-Section</h2>
+    <div class="slider-group">
+      <label>Shape</label>
+      <select id="selShape">
+        <option value="rect">Rectangular</option>
+        <option value="trap">Trapezoidal</option>
+        <option value="circ">Circular</option>
+      </select>
+    </div>
+
+    <!-- Rectangular params -->
+    <div class="slider-group param-rect">
+      <label>Width b <span class="val" id="vB">4.0 mm</span></label>
+      <input type="range" id="sB" min="0.5" max="25" value="4" step="0.5">
+    </div>
+
+    <!-- Trapezoidal params -->
+    <div class="slider-group param-trap hidden">
+      <label>Inner width b<sub>1</sub> <span class="val" id="vB1">5.0 mm</span></label>
+      <input type="range" id="sB1" min="0.5" max="25" value="5" step="0.5">
+    </div>
+    <div class="slider-group param-trap hidden">
+      <label>Outer width b<sub>2</sub> <span class="val" id="vB2">3.0 mm</span></label>
+      <input type="range" id="sB2" min="0.5" max="25" value="3" step="0.5">
+    </div>
+
+    <!-- Circular params (diameter is derived from ro - ri) -->
+    <div class="slider-group param-circ hidden">
+      <label>Diameter d <span class="val" id="vD">5.0 mm</span></label>
+    </div>
+
+    <!-- Results -->
+    <div class="results">
+      <h2>Results</h2>
+      <div class="result-row">
+        <span class="label">Bending moment M</span>
+        <span class="value" id="rM">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Cross-section area A</span>
+        <span class="value" id="rA">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Centroidal radius R<sub>c</sub></span>
+        <span class="value" id="rRc">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Neutral axis radius R</span>
+        <span class="value" id="rR">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Eccentricity e</span>
+        <span class="value" id="rE">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Inner stress &sigma;<sub>i</sub> (compression)</span>
+        <span class="value compression" id="rSi">—</span>
+      </div>
+      <div class="result-row">
+        <span class="label">Outer stress &sigma;<sub>o</sub> (tension)</span>
+        <span class="value tension" id="rSo">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Visualizations -->
+  <div class="visuals">
+    <div class="vis-panel">
+      <div class="title">Cross-Section</div>
+      <div class="content"><canvas id="cvSection"></canvas></div>
+    </div>
+    <div class="vis-panel">
+      <div class="title">Hook Side View</div>
+      <div class="content"><canvas id="cvHook"></canvas></div>
+    </div>
+    <div class="vis-panel stress-plot">
+      <div class="title">Stress Distribution (&sigma; vs r)</div>
+      <div class="legend">
+        <span class="l-tension">Tension</span>
+        <span class="l-compression">Compression</span>
+        <span class="l-neutral">Neutral axis</span>
+        <span class="l-centroid">Centroidal axis</span>
+      </div>
+      <div class="content"><canvas id="cvStress"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Winkler-Bach Computation Engine
+// ============================================================
+
+function computeRectangular(ri, ro, b) {
+  const h = ro - ri;
+  const A = b * h;
+  const Rc = ri + h / 2;                       // centroidal radius
+  const R = h / Math.log(ro / ri);             // neutral axis radius
+  const e = Rc - R;                            // eccentricity
+  return { A, Rc, R, e };
+}
+
+function computeTrapezoidal(ri, ro, b1, b2) {
+  // b1 = width at inner radius, b2 = width at outer radius
+  const h = ro - ri;
+  const A = h * (b1 + b2) / 2;
+  // Centroid distance from inner edge
+  const yc = (h / 3) * (b1 + 2 * b2) / (b1 + b2);
+  const Rc = ri + yc;
+  // Neutral axis: R = A / integral(dA/r)
+  // For trapezoid: width at distance y from inner edge = b1 + (b2 - b1) * y / h
+  // integral(dA/r) = integral_0^h [ b1 + (b2-b1)*y/h ] / (ri + y) dy
+  // = (b1 - b2) + ((b2*ro - b1*ri)/h) * ln(ro/ri)  -- but let's be careful
+  // Using: integral = b1*ln(ro/ri) + (b2-b1)/h * (h - ri*ln(ro/ri))
+  //                 = b1*ln(ro/ri) + (b2-b1) - (b2-b1)*ri/h*ln(ro/ri)
+  //                 = (b2-b1) + [b1 - (b2-b1)*ri/h]*ln(ro/ri)
+  //                 = (b2-b1) + [(b1*h - b2*ri + b1*ri)/h]*ln(ro/ri)
+  //                 = (b2-b1) + [(b1*(h+ri) - b2*ri)/h]*ln(ro/ri)
+  //   since h+ri = ro:
+  //                 = (b2-b1) + [(b1*ro - b2*ri)/h]*ln(ro/ri)
+  const lnRatio = Math.log(ro / ri);
+  const integralDaOverR = (b2 - b1) + ((b1 * ro - b2 * ri) / h) * lnRatio;
+  const R = A / integralDaOverR;
+  const e = Rc - R;
+  return { A, Rc, R, e };
+}
+
+function computeCircular(ri, ro, d) {
+  // Circular cross-section with diameter d, centered at Rc = (ri+ro)/2
+  // We need ro - ri >= d for the circle to fit
+  const radius = d / 2;
+  const A = Math.PI * radius * radius;
+  const Rc = (ri + ro) / 2;  // center of the circle on the radial axis
+
+  // Neutral axis: R = A / integral(dA/r)
+  // For a circle centered at Rc with radius=d/2:
+  // integral(dA/r) = 2*pi*(Rc - sqrt(Rc^2 - radius^2))
+  const sqrtTerm = Math.sqrt(Rc * Rc - radius * radius);
+  const integralDaOverR = 2 * Math.PI * (Rc - sqrtTerm);
+  const R = A / integralDaOverR;
+  const e = Rc - R;
+  return { A, Rc, R, e };
+}
+
+function computeStress(M, R, A, e, r) {
+  // σ = M*(R - r) / (A*e*r)
+  return M * (R - r) / (A * e * r);
+}
+
+function enforceRadiusConstraints() {
+  const sRi = document.getElementById('sRi');
+  const sRo = document.getElementById('sRo');
+  let ri = +sRi.value;
+  let ro = +sRo.value;
+
+  // Dynamic range limits: ri can go up to ro-0.5, ro can go down to ri+0.5
+  sRi.max = ro - 0.5;
+  sRo.min = ri + 0.5;
+
+  // Clamp values if they violate constraints (e.g. after programmatic changes)
+  if (ri >= ro) {
+    ro = ri + 0.5;
+    sRo.value = ro;
+  }
+}
+
+function computeAll() {
+  enforceRadiusConstraints();
+
+  const F  = +document.getElementById('sF').value;   // kN
+  const ri = +document.getElementById('sRi').value;   // mm
+  let   ro = +document.getElementById('sRo').value;   // mm
+  const shape = document.getElementById('selShape').value;
+
+  let section;
+  if (shape === 'rect') {
+    const b = +document.getElementById('sB').value;
+    section = computeRectangular(ri, ro, b);
+    section.shape = 'rect';
+    section.b = b;
+  } else if (shape === 'trap') {
+    const b1 = +document.getElementById('sB1').value;
+    const b2 = +document.getElementById('sB2').value;
+    section = computeTrapezoidal(ri, ro, b1, b2);
+    section.shape = 'trap';
+    section.b1 = b1; section.b2 = b2;
+  } else {
+    const d = ro - ri;  // diameter equals full radial depth
+    section = computeCircular(ri, ro, d);
+    section.shape = 'circ';
+    section.d = d;
+  }
+
+  const { A, Rc, R, e } = section;
+
+  // Units: F in N, distances in mm → stress in MPa (N/mm²)
+
+  // Bending moment at the critical section (bottom of hook):
+  // The load F tends to STRAIGHTEN the hook (reduce curvature).
+  // In Winkler-Bach convention, M is positive when it increases curvature,
+  // so M = -F * Rc (negative, tending to decrease curvature).
+  // This gives: compression at inner fiber, tension at outer fiber.
+  const M = -F * Rc;   // N·mm (negative: straightening moment)
+
+  // Total stress = direct axial + bending:
+  // σ(r) = F/A + M*(R - r) / (A*e*r)
+  // The direct stress F/A is tensile (positive) across the entire section.
+  // The bending component adds compression at the inner fiber and
+  // tension at the outer fiber.
+
+  // Stress at inner and outer fibers
+  const sigma_i = F / A + computeStress(M, R, A, e, ri);  // inner (compression side)
+  const sigma_o = F / A + computeStress(M, R, A, e, ro);  // outer (tension side)
+
+  // Stress distribution
+  const nPts = 200;
+  const stressDist = [];
+  for (let i = 0; i <= nPts; i++) {
+    const r = ri + (ro - ri) * i / nPts;
+    const sigma = F / A + computeStress(M, R, A, e, r);
+    stressDist.push({ r, sigma });
+  }
+
+  return { F, ri, ro, M, section, A, Rc, R, e, sigma_i, sigma_o, stressDist };
+}
+
+// ============================================================
+// UI Updates
+// ============================================================
+
+function updateLabels() {
+  document.getElementById('vF').textContent  = document.getElementById('sF').value + ' N';
+  document.getElementById('vRi').textContent = parseFloat(document.getElementById('sRi').value).toFixed(1) + ' mm';
+  document.getElementById('vRo').textContent = parseFloat(document.getElementById('sRo').value).toFixed(1) + ' mm';
+  document.getElementById('vB').textContent  = parseFloat(document.getElementById('sB').value).toFixed(1) + ' mm';
+  document.getElementById('vB1').textContent = parseFloat(document.getElementById('sB1').value).toFixed(1) + ' mm';
+  document.getElementById('vB2').textContent = parseFloat(document.getElementById('sB2').value).toFixed(1) + ' mm';
+  const ri = parseFloat(document.getElementById('sRi').value);
+  const ro = parseFloat(document.getElementById('sRo').value);
+  document.getElementById('vD').textContent  = (ro - ri).toFixed(1) + ' mm';
+}
+
+function updateShapeVisibility() {
+  const shape = document.getElementById('selShape').value;
+  document.querySelectorAll('.param-rect').forEach(el => el.classList.toggle('hidden', shape !== 'rect'));
+  document.querySelectorAll('.param-trap').forEach(el => el.classList.toggle('hidden', shape !== 'trap'));
+  document.querySelectorAll('.param-circ').forEach(el => el.classList.toggle('hidden', shape !== 'circ'));
+}
+
+function updateResults(data) {
+  document.getElementById('rM').textContent  = data.M.toFixed(1) + ' N\u00B7mm';
+  document.getElementById('rA').textContent  = data.A.toFixed(1) + ' mm\u00B2';
+  document.getElementById('rRc').textContent = data.Rc.toFixed(2) + ' mm';
+  document.getElementById('rR').textContent  = data.R.toFixed(2) + ' mm';
+  document.getElementById('rE').textContent  = data.e.toFixed(3) + ' mm';
+  document.getElementById('rSi').textContent = data.sigma_i.toFixed(2) + ' MPa';
+  document.getElementById('rSo').textContent = data.sigma_o.toFixed(2) + ' MPa';
+}
+
+// ============================================================
+// Canvas Drawing Utilities
+// ============================================================
+
+function setupCanvas(canvas) {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+// ============================================================
+// Draw Cross-Section
+// ============================================================
+
+function drawCrossSection(data) {
+  const canvas = document.getElementById('cvSection');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { section, ri, ro, Rc, R } = data;
+  const pad = 40;
+  const drawH = h - 2 * pad;
+  const drawW = w - 2 * pad;
+
+  // Determine section dimensions for scaling
+  let secH = ro - ri;  // radial height
+  let secW;
+  if (section.shape === 'rect') secW = section.b;
+  else if (section.shape === 'trap') secW = Math.max(section.b1, section.b2);
+  else secW = section.d;
+
+  const scale = Math.min(drawW / secW, drawH / secH) * 0.8;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  // Map: radial position r → y on canvas (inner at top, outer at bottom)
+  const mapR = r => cy + (r - Rc) * scale;
+  const mapX = x => cx + x * scale;
+
+  ctx.lineWidth = 1.5;
+
+  // Draw cross-section shape
+  ctx.beginPath();
+  if (section.shape === 'rect') {
+    const bHalf = section.b / 2;
+    const top = mapR(ro);
+    const bot = mapR(ri);
+    const left = mapX(-bHalf);
+    const right = mapX(bHalf);
+    ctx.rect(left, top, right - left, bot - top);
+  } else if (section.shape === 'trap') {
+    const b1Half = section.b1 / 2;
+    const b2Half = section.b2 / 2;
+    const top = mapR(ro);
+    const bot = mapR(ri);
+    ctx.moveTo(mapX(-b1Half), bot);
+    ctx.lineTo(mapX(b1Half), bot);
+    ctx.lineTo(mapX(b2Half), top);
+    ctx.lineTo(mapX(-b2Half), top);
+    ctx.closePath();
+  } else {
+    const cyr = mapR(Rc);
+    const rad = (section.d / 2) * scale;
+    ctx.arc(cx, cyr, rad, 0, 2 * Math.PI);
+  }
+  ctx.fillStyle = 'rgba(91,155,213,0.15)';
+  ctx.fill();
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.stroke();
+
+  // Draw neutral axis
+  ctx.beginPath();
+  ctx.setLineDash([6, 4]);
+  const yNA = mapR(R);
+  ctx.moveTo(pad, yNA);
+  ctx.lineTo(w - pad, yNA);
+  ctx.strokeStyle = '#44bb77';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw centroidal axis
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  const yC = mapR(Rc);
+  ctx.moveTo(pad, yC);
+  ctx.lineTo(w - pad, yC);
+  ctx.strokeStyle = '#cccc44';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#44bb77';
+  ctx.fillText('Neutral axis (R=' + R.toFixed(1) + ')', w - pad + 4 > w - 5 ? pad : w - pad + 4, yNA - 4);
+  ctx.fillStyle = '#cccc44';
+  ctx.fillText('Centroid (Rc=' + Rc.toFixed(1) + ')', pad, yC - 4);
+
+  // Dimension labels
+  ctx.fillStyle = '#8a8f98';
+  ctx.textAlign = 'center';
+  ctx.fillText('r_i = ' + ri + ' mm', cx, mapR(ri) - 6);
+  ctx.fillText('r_o = ' + ro + ' mm', cx, mapR(ro) + 14);
+
+  // Width labels
+  if (section.shape === 'rect') {
+    ctx.fillText('b = ' + section.b + ' mm', cx, mapR(ro) + 28);
+  } else if (section.shape === 'trap') {
+    ctx.fillText('b\u2081 = ' + section.b1 + ' mm', cx, mapR(ri) - 20);
+    ctx.fillText('b\u2082 = ' + section.b2 + ' mm', cx, mapR(ro) + 28);
+  } else {
+    ctx.fillText('d = ' + section.d + ' mm', cx, mapR(Rc) + (section.d / 2) * scale + 16);
+  }
+}
+
+// ============================================================
+// Draw Hook Side View
+// ============================================================
+
+function drawHookSideView(data) {
+  const canvas = document.getElementById('cvHook');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { ri, ro, F, Rc } = data;
+  const pad = 36;
+  const maxR = ro * 1.2;
+  const scale = Math.min((w - 2 * pad) / (2 * maxR), (h - 2 * pad) / (maxR + ro * 0.5)) * 0.85;
+  const cx = w / 2;
+  const cy = h * 0.42;
+
+  // Draw hook (semicircular arc)
+  // Inner arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, ri * scale, 0, Math.PI);
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Outer arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, ro * scale, 0, Math.PI);
+  ctx.stroke();
+
+  // Connect arcs at the ends
+  ctx.beginPath();
+  ctx.moveTo(cx + ri * scale, cy);
+  ctx.lineTo(cx + ro * scale, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - ri * scale, cy);
+  ctx.lineTo(cx - ro * scale, cy);
+  ctx.stroke();
+
+  // Shank (straight part going up from right side)
+  ctx.beginPath();
+  ctx.moveTo(cx - ri * scale, cy);
+  ctx.lineTo(cx - ri * scale, cy - ro * scale * 0.5);
+  ctx.moveTo(cx - ro * scale, cy);
+  ctx.lineTo(cx - ro * scale, cy - ro * scale * 0.5);
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Fill the hook body with transparency
+  ctx.beginPath();
+  ctx.arc(cx, cy, ro * scale, 0, Math.PI);
+  ctx.arc(cx, cy, ri * scale, Math.PI, 0, true);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(91,155,213,0.1)';
+  ctx.fill();
+
+  // Force arrow at bottom
+  const arrowX = cx;
+  const arrowTopY = cy + ri * scale + 10;
+  const arrowBotY = cy + ro * scale + 30;
+  ctx.beginPath();
+  ctx.moveTo(arrowX, arrowTopY);
+  ctx.lineTo(arrowX, arrowBotY);
+  ctx.strokeStyle = '#e05555';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(arrowX, arrowBotY);
+  ctx.lineTo(arrowX - 6, arrowBotY - 10);
+  ctx.lineTo(arrowX + 6, arrowBotY - 10);
+  ctx.closePath();
+  ctx.fillStyle = '#e05555';
+  ctx.fill();
+
+  // Force label
+  ctx.font = 'bold 13px system-ui';
+  ctx.fillStyle = '#e05555';
+  ctx.textAlign = 'center';
+  ctx.fillText('F = ' + F + ' N', arrowX, arrowBotY + 16);
+
+  // Dimension labels
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = '#8a8f98';
+  // ri dimension
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + ri * scale * 0.7, cy + ri * scale * 0.7);
+  ctx.strokeStyle = '#8a8f98';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([3, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillText('r\u1D62 = ' + ri, cx + ri * scale * 0.35 + 8, cy + ri * scale * 0.35 - 4);
+
+  // ro dimension
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx - ro * scale * 0.7, cy + ro * scale * 0.7);
+  ctx.strokeStyle = '#8a8f98';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([3, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillText('r\u2092 = ' + ro, cx - ro * scale * 0.35 - 24, cy + ro * scale * 0.35 - 4);
+
+  // Critical section marker
+  ctx.beginPath();
+  ctx.setLineDash([4, 4]);
+  ctx.moveTo(cx, cy - ro * scale - 8);
+  ctx.lineTo(cx, cy + ro * scale + 8);
+  ctx.strokeStyle = '#e0555588';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#e05555';
+  ctx.fillText('critical section', cx, cy - ro * scale - 12);
+}
+
+// ============================================================
+// Draw Stress Distribution
+// ============================================================
+
+function drawStressDistribution(data) {
+  const canvas = document.getElementById('cvStress');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { stressDist, ri, ro, R, Rc, sigma_i, sigma_o } = data;
+  const pad = { top: 20, right: 30, bottom: 36, left: 65 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  // Find stress range
+  const sigmas = stressDist.map(p => p.sigma);
+  let sigMin = Math.min(...sigmas);
+  let sigMax = Math.max(...sigmas);
+  const sigRange = sigMax - sigMin || 1;
+  // Add 10% padding
+  sigMin -= sigRange * 0.1;
+  sigMax += sigRange * 0.1;
+
+  const mapR = r => pad.left + (r - ri) / (ro - ri) * plotW;
+  const mapS = s => pad.top + plotH - (s - sigMin) / (sigMax - sigMin) * plotH;
+
+  // Grid
+  ctx.strokeStyle = '#2a2f38';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + plotH * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    const sVal = sigMax - (sigMax - sigMin) * i / 5;
+    ctx.fillStyle = '#8a8f98';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText(sVal.toFixed(0), pad.left - 6, y + 3);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const x = pad.left + plotW * i / 5;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
+    const rVal = ri + (ro - ri) * i / 5;
+    ctx.fillStyle = '#8a8f98';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(rVal.toFixed(0), x, h - pad.bottom + 14);
+  }
+
+  // Zero stress line
+  if (sigMin < 0 && sigMax > 0) {
+    const y0 = mapS(0);
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(pad.left, y0);
+    ctx.lineTo(w - pad.right, y0);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#777';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText('0', pad.left - 6, y0 + 3);
+  }
+
+  // Fill tension and compression areas
+  // Tension (positive sigma) — blue
+  ctx.beginPath();
+  ctx.moveTo(mapR(stressDist[0].r), mapS(0));
+  for (const p of stressDist) {
+    const y = Math.min(mapS(0), mapS(p.sigma));
+    ctx.lineTo(mapR(p.r), y);
+  }
+  ctx.lineTo(mapR(stressDist[stressDist.length - 1].r), mapS(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(85,153,221,0.15)';
+  ctx.fill();
+
+  // Compression (negative sigma) — red
+  ctx.beginPath();
+  ctx.moveTo(mapR(stressDist[0].r), mapS(0));
+  for (const p of stressDist) {
+    const y = Math.max(mapS(0), mapS(p.sigma));
+    ctx.lineTo(mapR(p.r), y);
+  }
+  ctx.lineTo(mapR(stressDist[stressDist.length - 1].r), mapS(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(224,85,85,0.15)';
+  ctx.fill();
+
+  // Plot stress curve
+  ctx.beginPath();
+  for (let i = 0; i < stressDist.length; i++) {
+    const x = mapR(stressDist[i].r);
+    const y = mapS(stressDist[i].sigma);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Neutral axis vertical line
+  ctx.beginPath();
+  ctx.setLineDash([5, 3]);
+  ctx.moveTo(mapR(R), pad.top);
+  ctx.lineTo(mapR(R), pad.top + plotH);
+  ctx.strokeStyle = '#44bb77';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Centroidal axis vertical line
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  ctx.moveTo(mapR(Rc), pad.top);
+  ctx.lineTo(mapR(Rc), pad.top + plotH);
+  ctx.strokeStyle = '#cccc44';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Mark inner and outer stress points
+  // Inner fiber: compression (red), Outer fiber: tension (blue)
+  ctx.beginPath();
+  ctx.arc(mapR(ri), mapS(sigma_i), 5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#e05555';
+  ctx.fill();
+  ctx.font = 'bold 11px system-ui';
+  ctx.fillStyle = '#e05555';
+  ctx.textAlign = 'left';
+  ctx.fillText('\u03C3\u1D62 = ' + sigma_i.toFixed(1) + ' MPa', mapR(ri) + 8, mapS(sigma_i) - 6);
+
+  ctx.beginPath();
+  ctx.arc(mapR(ro), mapS(sigma_o), 5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#5599dd';
+  ctx.fill();
+  ctx.fillStyle = '#5599dd';
+  ctx.textAlign = 'right';
+  ctx.fillText('\u03C3\u2092 = ' + sigma_o.toFixed(1) + ' MPa', mapR(ro) - 8, mapS(sigma_o) - 6);
+
+  // Axis labels
+  ctx.fillStyle = '#8a8f98';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Radial position r (mm)', pad.left + plotW / 2, h - 4);
+  ctx.save();
+  ctx.translate(14, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Stress \u03C3 (MPa)', 0, 0);
+  ctx.restore();
+}
+
+// ============================================================
+// Main Update Loop
+// ============================================================
+
+function update() {
+  updateLabels();
+  updateShapeVisibility();
+  const data = computeAll();
+  updateResults(data);
+  drawCrossSection(data);
+  drawHookSideView(data);
+  drawStressDistribution(data);
+}
+
+// Bind events
+document.querySelectorAll('input[type=range], select').forEach(el => {
+  el.addEventListener('input', update);
+});
+window.addEventListener('resize', update);
+
+// Initial render
+update();
+</script>
+</body>
+</html>

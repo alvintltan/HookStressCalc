@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Hook Strength Calculator — Mobile</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1a1d23; --surface: #23272e; --border: #353a44;
+    --text: #e0e0e0; --text-dim: #8a8f98; --accent: #5b9bd5;
+    --tension: #5599dd; --compression: #e05555; --neutral: #44bb77;
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, system-ui, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+    overflow-x: hidden; -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 16px; display: flex; align-items: center; gap: 8px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 16px; font-weight: 600; white-space: nowrap; }
+  header span { color: var(--text-dim); font-size: 11px; }
+  .app {
+    display: flex; flex-direction: column;
+    min-height: calc(100vh - 45px); min-height: calc(100dvh - 45px);
+  }
+
+  /* --- Collapsible Sections --- */
+  .section {
+    border-bottom: 1px solid var(--border);
+  }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; background: var(--surface);
+    cursor: pointer; -webkit-user-select: none; user-select: none;
+    min-height: 44px;
+  }
+  .section-header h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--text-dim); margin: 0; border: none;
+  }
+  .section-header .chevron {
+    color: var(--text-dim); font-size: 14px;
+    transition: transform 0.2s ease;
+  }
+  .section.collapsed .chevron { transform: rotate(-90deg); }
+  .section.collapsed .section-body { display: none; }
+  .section-body { padding: 12px 16px; }
+
+  /* --- Controls --- */
+  .slider-group { margin-bottom: 14px; }
+  .slider-group label {
+    display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px;
+  }
+  .slider-group label .val { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slider-group input[type=range] {
+    width: 100%; height: 8px; -webkit-appearance: none; appearance: none;
+    background: var(--border); border-radius: 4px; outline: none; cursor: pointer;
+  }
+  .slider-group input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); border: 3px solid var(--bg); cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .slider-group input[type=range]::-moz-range-thumb {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); border: 3px solid var(--bg); cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  select {
+    width: 100%; padding: 10px 12px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font-size: 14px; cursor: pointer;
+    min-height: 44px;
+  }
+  .hidden { display: none !important; }
+
+  /* --- Results --- */
+  .results-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .result-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .result-card .label { font-size: 11px; color: var(--text-dim); line-height: 1.3; }
+  .result-card .value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .result-card .value.tension { color: var(--tension); }
+  .result-card .value.compression { color: var(--compression); }
+  .result-card.full-width { grid-column: 1 / -1; }
+
+  /* --- Visualization panels --- */
+  .vis-panel {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    overflow: hidden; position: relative; display: flex; flex-direction: column;
+  }
+  .vis-panel .title {
+    font-size: 12px; color: var(--text-dim); padding: 8px 16px;
+    border-bottom: 1px solid var(--border); text-transform: uppercase;
+    letter-spacing: 0.6px; flex-shrink: 0;
+  }
+  .vis-panel .content {
+    position: relative; width: 100%;
+  }
+  .vis-panel canvas { display: block; width: 100%; height: 100%; }
+  .canvas-wrap-square { aspect-ratio: 1 / 1; }
+  .canvas-wrap-wide { aspect-ratio: 16 / 10; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 12px; padding: 6px 16px 8px; font-size: 11px;
+    color: var(--text-dim); flex-shrink: 0; flex-wrap: wrap;
+  }
+  .legend span::before {
+    content: ''; display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 4px; vertical-align: middle;
+  }
+  .legend .l-tension::before { background: var(--tension); }
+  .legend .l-compression::before { background: var(--compression); }
+  .legend .l-neutral::before { background: var(--neutral); }
+  .legend .l-centroid::before { background: #cccc44; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Hook Strength Calculator</h1>
+  <span>Winkler-Bach</span>
+</header>
+
+<div class="app">
+
+  <!-- Controls (sliders first) -->
+  <div class="section" id="secLoading">
+    <div class="section-header" onclick="toggleSection('secLoading')">
+      <h2>Loading</h2>
+      <span class="chevron">&#9660;</span>
+    </div>
+    <div class="section-body">
+      <div class="slider-group">
+        <label>Force F <span class="val" id="vF">10 N</span></label>
+        <input type="range" id="sF" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="secGeometry">
+    <div class="section-header" onclick="toggleSection('secGeometry')">
+      <h2>Hook Geometry</h2>
+      <span class="chevron">&#9660;</span>
+    </div>
+    <div class="section-body">
+      <div class="slider-group">
+        <label>Inner radius r<sub>i</sub> <span class="val" id="vRi">3.0 mm</span></label>
+        <input type="range" id="sRi" min="1" max="49.5" value="3" step="0.5">
+      </div>
+      <div class="slider-group">
+        <label>Outer radius r<sub>o</sub> <span class="val" id="vRo">8.0 mm</span></label>
+        <input type="range" id="sRo" min="1.5" max="50" value="8" step="0.5">
+      </div>
+    </div>
+  </div>
+
+  <div class="section" id="secCrossSection">
+    <div class="section-header" onclick="toggleSection('secCrossSection')">
+      <h2>Cross-Section</h2>
+      <span class="chevron">&#9660;</span>
+    </div>
+    <div class="section-body">
+      <div class="slider-group">
+        <label>Shape</label>
+        <select id="selShape">
+          <option value="rect">Rectangular</option>
+          <option value="trap">Trapezoidal</option>
+          <option value="circ">Circular</option>
+        </select>
+      </div>
+
+      <!-- Rectangular params -->
+      <div class="slider-group param-rect">
+        <label>Width b <span class="val" id="vB">4.0 mm</span></label>
+        <input type="range" id="sB" min="0.5" max="25" value="4" step="0.5">
+      </div>
+
+      <!-- Trapezoidal params -->
+      <div class="slider-group param-trap hidden">
+        <label>Inner width b<sub>1</sub> <span class="val" id="vB1">5.0 mm</span></label>
+        <input type="range" id="sB1" min="0.5" max="25" value="5" step="0.5">
+      </div>
+      <div class="slider-group param-trap hidden">
+        <label>Outer width b<sub>2</sub> <span class="val" id="vB2">3.0 mm</span></label>
+        <input type="range" id="sB2" min="0.5" max="25" value="3" step="0.5">
+      </div>
+
+      <!-- Circular params (diameter is derived from ro - ri) -->
+      <div class="slider-group param-circ hidden">
+        <label>Diameter d <span class="val" id="vD">5.0 mm</span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cross-Section & Hook Diagrams (side by side) -->
+  <div class="diagrams-row">
+    <div class="vis-panel">
+      <div class="title">Cross-Section</div>
+      <div class="content canvas-wrap-square"><canvas id="cvSection"></canvas></div>
+    </div>
+    <div class="vis-panel">
+      <div class="title">Hook Side View</div>
+      <div class="content canvas-wrap-square"><canvas id="cvHook"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Stress Distribution Plot -->
+  <div class="vis-panel">
+    <div class="title">Stress Distribution (&sigma; vs r)</div>
+    <div class="legend">
+      <span class="l-tension">Tension</span>
+      <span class="l-compression">Compression</span>
+      <span class="l-neutral">Neutral axis</span>
+      <span class="l-centroid">Centroidal axis</span>
+    </div>
+    <div class="content canvas-wrap-wide"><canvas id="cvStress"></canvas></div>
+  </div>
+
+  <!-- Results (compact cards) -->
+  <div class="section" id="secResults">
+    <div class="section-header" onclick="toggleSection('secResults')">
+      <h2>Results</h2>
+      <span class="chevron">&#9660;</span>
+    </div>
+    <div class="section-body">
+      <div class="results-grid">
+        <div class="result-card">
+          <div class="label">Bending moment M</div>
+          <div class="value" id="rM">&mdash;</div>
+        </div>
+        <div class="result-card">
+          <div class="label">Area A</div>
+          <div class="value" id="rA">&mdash;</div>
+        </div>
+        <div class="result-card">
+          <div class="label">Centroidal R<sub>c</sub></div>
+          <div class="value" id="rRc">&mdash;</div>
+        </div>
+        <div class="result-card">
+          <div class="label">Neutral axis R</div>
+          <div class="value" id="rR">&mdash;</div>
+        </div>
+        <div class="result-card">
+          <div class="label">Eccentricity e</div>
+          <div class="value" id="rE">&mdash;</div>
+        </div>
+        <div class="result-card full-width" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <div class="label">Inner &sigma;<sub>i</sub> (compression)</div>
+            <div class="value compression" id="rSi">&mdash;</div>
+          </div>
+          <div>
+            <div class="label">Outer &sigma;<sub>o</sub> (tension)</div>
+            <div class="value tension" id="rSo">&mdash;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  /* Diagrams row: side-by-side on wider screens, stacked on very narrow */
+  .diagrams-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+  }
+  .diagrams-row .vis-panel { border-right: 1px solid var(--border); }
+  .diagrams-row .vis-panel:last-child { border-right: none; }
+
+  @media (max-width: 360px) {
+    .diagrams-row { grid-template-columns: 1fr; }
+    .diagrams-row .vis-panel { border-right: none; }
+  }
+
+  /* Landscape orientation: allow scrolling, don't try to fit everything */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .canvas-wrap-wide { aspect-ratio: 2 / 1; }
+    .canvas-wrap-square { aspect-ratio: 4 / 3; }
+  }
+</style>
+
+<script>
+// ============================================================
+// Winkler-Bach Computation Engine
+// ============================================================
+
+function computeRectangular(ri, ro, b) {
+  const h = ro - ri;
+  const A = b * h;
+  const Rc = ri + h / 2;
+  const R = h / Math.log(ro / ri);
+  const e = Rc - R;
+  return { A, Rc, R, e };
+}
+
+function computeTrapezoidal(ri, ro, b1, b2) {
+  const h = ro - ri;
+  const A = h * (b1 + b2) / 2;
+  const yc = (h / 3) * (b1 + 2 * b2) / (b1 + b2);
+  const Rc = ri + yc;
+  const lnRatio = Math.log(ro / ri);
+  const integralDaOverR = (b2 - b1) + ((b1 * ro - b2 * ri) / h) * lnRatio;
+  const R = A / integralDaOverR;
+  const e = Rc - R;
+  return { A, Rc, R, e };
+}
+
+function computeCircular(ri, ro, d) {
+  const radius = d / 2;
+  const A = Math.PI * radius * radius;
+  const Rc = (ri + ro) / 2;
+  const sqrtTerm = Math.sqrt(Rc * Rc - radius * radius);
+  const integralDaOverR = 2 * Math.PI * (Rc - sqrtTerm);
+  const R = A / integralDaOverR;
+  const e = Rc - R;
+  return { A, Rc, R, e };
+}
+
+function computeStress(M, R, A, e, r) {
+  return M * (R - r) / (A * e * r);
+}
+
+function enforceRadiusConstraints() {
+  const sRi = document.getElementById('sRi');
+  const sRo = document.getElementById('sRo');
+  let ri = +sRi.value;
+  let ro = +sRo.value;
+  sRi.max = ro - 0.5;
+  sRo.min = ri + 0.5;
+  if (ri >= ro) {
+    ro = ri + 0.5;
+    sRo.value = ro;
+  }
+}
+
+function computeAll() {
+  enforceRadiusConstraints();
+
+  const F  = +document.getElementById('sF').value;
+  const ri = +document.getElementById('sRi').value;
+  let   ro = +document.getElementById('sRo').value;
+  const shape = document.getElementById('selShape').value;
+
+  let section;
+  if (shape === 'rect') {
+    const b = +document.getElementById('sB').value;
+    section = computeRectangular(ri, ro, b);
+    section.shape = 'rect';
+    section.b = b;
+  } else if (shape === 'trap') {
+    const b1 = +document.getElementById('sB1').value;
+    const b2 = +document.getElementById('sB2').value;
+    section = computeTrapezoidal(ri, ro, b1, b2);
+    section.shape = 'trap';
+    section.b1 = b1; section.b2 = b2;
+  } else {
+    const d = ro - ri;
+    section = computeCircular(ri, ro, d);
+    section.shape = 'circ';
+    section.d = d;
+  }
+
+  const { A, Rc, R, e } = section;
+  const M = -F * Rc;
+
+  const sigma_i = F / A + computeStress(M, R, A, e, ri);
+  const sigma_o = F / A + computeStress(M, R, A, e, ro);
+
+  const nPts = 200;
+  const stressDist = [];
+  for (let i = 0; i <= nPts; i++) {
+    const r = ri + (ro - ri) * i / nPts;
+    const sigma = F / A + computeStress(M, R, A, e, r);
+    stressDist.push({ r, sigma });
+  }
+
+  return { F, ri, ro, M, section, A, Rc, R, e, sigma_i, sigma_o, stressDist };
+}
+
+// ============================================================
+// UI Updates
+// ============================================================
+
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+function updateLabels() {
+  document.getElementById('vF').textContent  = document.getElementById('sF').value + ' N';
+  document.getElementById('vRi').textContent = parseFloat(document.getElementById('sRi').value).toFixed(1) + ' mm';
+  document.getElementById('vRo').textContent = parseFloat(document.getElementById('sRo').value).toFixed(1) + ' mm';
+  document.getElementById('vB').textContent  = parseFloat(document.getElementById('sB').value).toFixed(1) + ' mm';
+  document.getElementById('vB1').textContent = parseFloat(document.getElementById('sB1').value).toFixed(1) + ' mm';
+  document.getElementById('vB2').textContent = parseFloat(document.getElementById('sB2').value).toFixed(1) + ' mm';
+  const ri = parseFloat(document.getElementById('sRi').value);
+  const ro = parseFloat(document.getElementById('sRo').value);
+  document.getElementById('vD').textContent  = (ro - ri).toFixed(1) + ' mm';
+}
+
+function updateShapeVisibility() {
+  const shape = document.getElementById('selShape').value;
+  document.querySelectorAll('.param-rect').forEach(el => el.classList.toggle('hidden', shape !== 'rect'));
+  document.querySelectorAll('.param-trap').forEach(el => el.classList.toggle('hidden', shape !== 'trap'));
+  document.querySelectorAll('.param-circ').forEach(el => el.classList.toggle('hidden', shape !== 'circ'));
+}
+
+function updateResults(data) {
+  document.getElementById('rM').textContent  = data.M.toFixed(1) + ' N\u00B7mm';
+  document.getElementById('rA').textContent  = data.A.toFixed(1) + ' mm\u00B2';
+  document.getElementById('rRc').textContent = data.Rc.toFixed(2) + ' mm';
+  document.getElementById('rR').textContent  = data.R.toFixed(2) + ' mm';
+  document.getElementById('rE').textContent  = data.e.toFixed(3) + ' mm';
+  document.getElementById('rSi').textContent = data.sigma_i.toFixed(2) + ' MPa';
+  document.getElementById('rSo').textContent = data.sigma_o.toFixed(2) + ' MPa';
+}
+
+// ============================================================
+// Canvas Drawing Utilities
+// ============================================================
+
+function setupCanvas(canvas) {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+// ============================================================
+// Draw Cross-Section
+// ============================================================
+
+function drawCrossSection(data) {
+  const canvas = document.getElementById('cvSection');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { section, ri, ro, Rc, R } = data;
+  const pad = 30;
+  const drawH = h - 2 * pad;
+  const drawW = w - 2 * pad;
+
+  let secH = ro - ri;
+  let secW;
+  if (section.shape === 'rect') secW = section.b;
+  else if (section.shape === 'trap') secW = Math.max(section.b1, section.b2);
+  else secW = section.d;
+
+  const scale = Math.min(drawW / secW, drawH / secH) * 0.7;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  const mapR = r => cy + (r - Rc) * scale;
+  const mapX = x => cx + x * scale;
+
+  ctx.lineWidth = 1.5;
+
+  // Draw shape
+  ctx.beginPath();
+  if (section.shape === 'rect') {
+    const bHalf = section.b / 2;
+    const top = mapR(ro);
+    const bot = mapR(ri);
+    ctx.rect(mapX(-bHalf), top, (section.b) * scale, bot - top);
+  } else if (section.shape === 'trap') {
+    const b1Half = section.b1 / 2;
+    const b2Half = section.b2 / 2;
+    const top = mapR(ro);
+    const bot = mapR(ri);
+    ctx.moveTo(mapX(-b1Half), bot);
+    ctx.lineTo(mapX(b1Half), bot);
+    ctx.lineTo(mapX(b2Half), top);
+    ctx.lineTo(mapX(-b2Half), top);
+    ctx.closePath();
+  } else {
+    const cyr = mapR(Rc);
+    const rad = (section.d / 2) * scale;
+    ctx.arc(cx, cyr, rad, 0, 2 * Math.PI);
+  }
+  ctx.fillStyle = 'rgba(91,155,213,0.15)';
+  ctx.fill();
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.stroke();
+
+  // Neutral axis
+  ctx.beginPath();
+  ctx.setLineDash([6, 4]);
+  const yNA = mapR(R);
+  ctx.moveTo(pad, yNA);
+  ctx.lineTo(w - pad, yNA);
+  ctx.strokeStyle = '#44bb77';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Centroidal axis
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  const yC = mapR(Rc);
+  ctx.moveTo(pad, yC);
+  ctx.lineTo(w - pad, yC);
+  ctx.strokeStyle = '#cccc44';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels (smaller font for mobile)
+  const fontSize = Math.max(9, Math.min(11, w * 0.04));
+  ctx.font = fontSize + 'px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#44bb77';
+  ctx.fillText('NA (R=' + R.toFixed(1) + ')', pad + 2, yNA - 4);
+  ctx.fillStyle = '#cccc44';
+  ctx.fillText('Rc=' + Rc.toFixed(1), pad + 2, yC + fontSize + 2);
+
+  ctx.fillStyle = '#8a8f98';
+  ctx.textAlign = 'center';
+  ctx.fillText('r\u1D62=' + ri, cx, mapR(ri) - 4);
+  ctx.fillText('r\u2092=' + ro, cx, mapR(ro) + fontSize + 2);
+
+  if (section.shape === 'rect') {
+    ctx.fillText('b=' + section.b, cx, mapR(ro) + fontSize * 2 + 4);
+  } else if (section.shape === 'trap') {
+    ctx.fillText('b\u2081=' + section.b1, cx, mapR(ri) - fontSize - 4);
+    ctx.fillText('b\u2082=' + section.b2, cx, mapR(ro) + fontSize * 2 + 4);
+  } else {
+    ctx.fillText('d=' + section.d.toFixed(1), cx, mapR(Rc) + (section.d / 2) * scale + fontSize + 4);
+  }
+}
+
+// ============================================================
+// Draw Hook Side View
+// ============================================================
+
+function drawHookSideView(data) {
+  const canvas = document.getElementById('cvHook');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { ri, ro, F, Rc } = data;
+  const pad = 24;
+  const maxR = ro * 1.2;
+  const scale = Math.min((w - 2 * pad) / (2 * maxR), (h - 2 * pad) / (maxR + ro * 0.5)) * 0.85;
+  const cx = w / 2;
+  const cy = h * 0.42;
+
+  // Inner arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, ri * scale, 0, Math.PI);
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Outer arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, ro * scale, 0, Math.PI);
+  ctx.stroke();
+
+  // Connect arcs
+  ctx.beginPath();
+  ctx.moveTo(cx + ri * scale, cy);
+  ctx.lineTo(cx + ro * scale, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - ri * scale, cy);
+  ctx.lineTo(cx - ro * scale, cy);
+  ctx.stroke();
+
+  // Shank
+  ctx.beginPath();
+  ctx.moveTo(cx - ri * scale, cy);
+  ctx.lineTo(cx - ri * scale, cy - ro * scale * 0.5);
+  ctx.moveTo(cx - ro * scale, cy);
+  ctx.lineTo(cx - ro * scale, cy - ro * scale * 0.5);
+  ctx.strokeStyle = '#5b9bd5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Fill hook body
+  ctx.beginPath();
+  ctx.arc(cx, cy, ro * scale, 0, Math.PI);
+  ctx.arc(cx, cy, ri * scale, Math.PI, 0, true);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(91,155,213,0.1)';
+  ctx.fill();
+
+  // Force arrow
+  const arrowX = cx;
+  const arrowTopY = cy + ri * scale + 8;
+  const arrowBotY = cy + ro * scale + 22;
+  ctx.beginPath();
+  ctx.moveTo(arrowX, arrowTopY);
+  ctx.lineTo(arrowX, arrowBotY);
+  ctx.strokeStyle = '#e05555';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(arrowX, arrowBotY);
+  ctx.lineTo(arrowX - 5, arrowBotY - 8);
+  ctx.lineTo(arrowX + 5, arrowBotY - 8);
+  ctx.closePath();
+  ctx.fillStyle = '#e05555';
+  ctx.fill();
+
+  // Force label
+  const fontSize = Math.max(10, Math.min(12, w * 0.06));
+  ctx.font = 'bold ' + fontSize + 'px system-ui';
+  ctx.fillStyle = '#e05555';
+  ctx.textAlign = 'center';
+  ctx.fillText('F=' + F + 'N', arrowX, arrowBotY + fontSize + 2);
+
+  // ri / ro labels
+  ctx.font = (fontSize - 1) + 'px system-ui';
+  ctx.fillStyle = '#8a8f98';
+  ctx.fillText('r\u1D62=' + ri, cx + ri * scale * 0.35 + 4, cy + ri * scale * 0.35 - 2);
+  ctx.fillText('r\u2092=' + ro, cx - ro * scale * 0.35 - 4, cy + ro * scale * 0.35 - 2);
+
+  // Critical section
+  ctx.beginPath();
+  ctx.setLineDash([4, 4]);
+  ctx.moveTo(cx, cy - ro * scale - 6);
+  ctx.lineTo(cx, cy + ro * scale + 6);
+  ctx.strokeStyle = '#e0555588';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ============================================================
+// Draw Stress Distribution
+// ============================================================
+
+function drawStressDistribution(data) {
+  const canvas = document.getElementById('cvStress');
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const { stressDist, ri, ro, R, Rc, sigma_i, sigma_o } = data;
+  const pad = { top: 16, right: 20, bottom: 32, left: 50 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  // Stress range
+  const sigmas = stressDist.map(p => p.sigma);
+  let sigMin = Math.min(...sigmas);
+  let sigMax = Math.max(...sigmas);
+  const sigRange = sigMax - sigMin || 1;
+  sigMin -= sigRange * 0.1;
+  sigMax += sigRange * 0.1;
+
+  const mapR = r => pad.left + (r - ri) / (ro - ri) * plotW;
+  const mapS = s => pad.top + plotH - (s - sigMin) / (sigMax - sigMin) * plotH;
+
+  const fontSize = Math.max(9, Math.min(11, w * 0.03));
+
+  // Grid
+  ctx.strokeStyle = '#2a2f38';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.top + plotH * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    const sVal = sigMax - (sigMax - sigMin) * i / 5;
+    ctx.fillStyle = '#8a8f98';
+    ctx.font = fontSize + 'px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText(sVal.toFixed(0), pad.left - 4, y + 3);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const x = pad.left + plotW * i / 5;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
+    const rVal = ri + (ro - ri) * i / 5;
+    ctx.fillStyle = '#8a8f98';
+    ctx.font = fontSize + 'px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(rVal.toFixed(1), x, h - pad.bottom + 12);
+  }
+
+  // Zero stress line
+  if (sigMin < 0 && sigMax > 0) {
+    const y0 = mapS(0);
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(pad.left, y0);
+    ctx.lineTo(w - pad.right, y0);
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#777';
+    ctx.font = fontSize + 'px system-ui';
+    ctx.textAlign = 'right';
+    ctx.fillText('0', pad.left - 4, y0 + 3);
+  }
+
+  // Tension fill (positive sigma) — blue
+  ctx.beginPath();
+  ctx.moveTo(mapR(stressDist[0].r), mapS(0));
+  for (const p of stressDist) {
+    ctx.lineTo(mapR(p.r), Math.min(mapS(0), mapS(p.sigma)));
+  }
+  ctx.lineTo(mapR(stressDist[stressDist.length - 1].r), mapS(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(85,153,221,0.15)';
+  ctx.fill();
+
+  // Compression fill (negative sigma) — red
+  ctx.beginPath();
+  ctx.moveTo(mapR(stressDist[0].r), mapS(0));
+  for (const p of stressDist) {
+    ctx.lineTo(mapR(p.r), Math.max(mapS(0), mapS(p.sigma)));
+  }
+  ctx.lineTo(mapR(stressDist[stressDist.length - 1].r), mapS(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(224,85,85,0.15)';
+  ctx.fill();
+
+  // Stress curve
+  ctx.beginPath();
+  for (let i = 0; i < stressDist.length; i++) {
+    const x = mapR(stressDist[i].r);
+    const y = mapS(stressDist[i].sigma);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Neutral axis
+  ctx.beginPath();
+  ctx.setLineDash([5, 3]);
+  ctx.moveTo(mapR(R), pad.top);
+  ctx.lineTo(mapR(R), pad.top + plotH);
+  ctx.strokeStyle = '#44bb77';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Centroidal axis
+  ctx.beginPath();
+  ctx.setLineDash([3, 3]);
+  ctx.moveTo(mapR(Rc), pad.top);
+  ctx.lineTo(mapR(Rc), pad.top + plotH);
+  ctx.strokeStyle = '#cccc44';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Inner stress point (compression — red)
+  ctx.beginPath();
+  ctx.arc(mapR(ri), mapS(sigma_i), 5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#e05555';
+  ctx.fill();
+  const labelFontSize = Math.max(10, Math.min(12, w * 0.035));
+  ctx.font = 'bold ' + labelFontSize + 'px system-ui';
+  ctx.fillStyle = '#e05555';
+  ctx.textAlign = 'left';
+  ctx.fillText('\u03C3\u1D62=' + sigma_i.toFixed(1), mapR(ri) + 6, mapS(sigma_i) - 6);
+
+  // Outer stress point (tension — blue)
+  ctx.beginPath();
+  ctx.arc(mapR(ro), mapS(sigma_o), 5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#5599dd';
+  ctx.fill();
+  ctx.fillStyle = '#5599dd';
+  ctx.textAlign = 'right';
+  ctx.fillText('\u03C3\u2092=' + sigma_o.toFixed(1), mapR(ro) - 6, mapS(sigma_o) - 6);
+
+  // Axis labels
+  ctx.fillStyle = '#8a8f98';
+  ctx.font = (fontSize + 1) + 'px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('r (mm)', pad.left + plotW / 2, h - 2);
+  ctx.save();
+  ctx.translate(12, pad.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('\u03C3 (MPa)', 0, 0);
+  ctx.restore();
+}
+
+// ============================================================
+// Main Update Loop
+// ============================================================
+
+function update() {
+  updateLabels();
+  updateShapeVisibility();
+  const data = computeAll();
+  updateResults(data);
+  drawCrossSection(data);
+  drawHookSideView(data);
+  drawStressDistribution(data);
+}
+
+// Bind events
+document.querySelectorAll('input[type=range], select').forEach(el => {
+  el.addEventListener('input', update);
+});
+
+// Debounced resize handler
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(update, 100);
+});
+
+// Handle orientation change
+window.addEventListener('orientationchange', () => {
+  setTimeout(update, 200);
+});
+
+// Initial render
+update();
+</script>
+</body>
+</html>
