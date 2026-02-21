@@ -257,12 +257,12 @@
         </div>
         <div class="result-card full-width" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div>
-            <div class="label">Inner &sigma;<sub>i</sub> (compression)</div>
-            <div class="value compression" id="rSi">&mdash;</div>
+            <div class="label">Inner &sigma;<sub>i</sub> (tension)</div>
+            <div class="value tension" id="rSi">&mdash;</div>
           </div>
           <div>
-            <div class="label">Outer &sigma;<sub>o</sub> (tension)</div>
-            <div class="value tension" id="rSo">&mdash;</div>
+            <div class="label">Outer &sigma;<sub>o</sub> (compression)</div>
+            <div class="value compression" id="rSo">&mdash;</div>
           </div>
         </div>
       </div>
@@ -373,7 +373,7 @@ function computeAll() {
   }
 
   const { A, Rc, R, e } = section;
-  const M = -F * Rc;
+  const M = F * Rc;
 
   const sigma_i = F / A + computeStress(M, R, A, e, ri);
   const sigma_o = F / A + computeStress(M, R, A, e, ro);
@@ -759,23 +759,23 @@ function drawStressDistribution(data) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Inner stress point (compression — red)
+  // Inner stress point (tension — blue)
   ctx.beginPath();
   ctx.arc(mapR(ri), mapS(sigma_i), 5, 0, 2 * Math.PI);
-  ctx.fillStyle = '#e05555';
+  ctx.fillStyle = '#5599dd';
   ctx.fill();
   const labelFontSize = Math.max(10, Math.min(12, w * 0.035));
   ctx.font = 'bold ' + labelFontSize + 'px system-ui';
-  ctx.fillStyle = '#e05555';
+  ctx.fillStyle = '#5599dd';
   ctx.textAlign = 'left';
   ctx.fillText('\u03C3\u1D62=' + sigma_i.toFixed(1), mapR(ri) + 6, mapS(sigma_i) - 6);
 
-  // Outer stress point (tension — blue)
+  // Outer stress point (compression — red)
   ctx.beginPath();
   ctx.arc(mapR(ro), mapS(sigma_o), 5, 0, 2 * Math.PI);
-  ctx.fillStyle = '#5599dd';
+  ctx.fillStyle = '#e05555';
   ctx.fill();
-  ctx.fillStyle = '#5599dd';
+  ctx.fillStyle = '#e05555';
   ctx.textAlign = 'right';
   ctx.fillText('\u03C3\u2092=' + sigma_o.toFixed(1), mapR(ro) - 6, mapS(sigma_o) - 6);
 
